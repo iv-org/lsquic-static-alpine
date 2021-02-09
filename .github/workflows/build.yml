@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ./lsquic
-          key: lsquic-${{ env.LSQUIC_COMMIT }}
+          key: lsquic-${{ env.LSQUIC_COMMIT }}-${{ env.BORINGSSL_COMMIT }}
       
       - name: Build LSQUIC
         if: steps.cache-lsquic.outputs.cache-hit != 'true'

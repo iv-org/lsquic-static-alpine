@@ -9,66 +9,54 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: alpine:latest
-    
+    container: alpine:3.14
+
     outputs:
       LSQUIC_COMMIT: ${{ env.LSQUIC_COMMIT }}
       LSQUIC_VERSION: ${{ env.LSQUIC_VERSION }}
-    
+
     steps:
       - name: Install action dependencies
-        run: apk add git tar
-      
+        run: |
+          apk add \
+            binutils \
+            bsd-compat-headers \
+            build-base \
+            cmake \
+            git \
+            go \
+            libevent-dev \
+            linux-headers \
+            ninja \
+            perl \
+            tar \
+            zlib-dev \
+            zlib-static
+
       - uses: actions/checkout@v2
-      
+
       - name: Load BORINGSSL_COMMIT and LSQUIC_COMMIT
         run: ./env.sh
-      
+
       - name: Cache BoringSSL
         id: cache-boringssl
         uses: actions/cache@v2
         with:
           path: ./boringssl
           key: boringssl-${{ env.BORINGSSL_COMMIT }}
-      
+
       - name: Build BoringSSL
         if: steps.cache-boringssl.outputs.cache-hit != 'true'
         run: |
-          apk add \
-            build-base \
-            cmake \
-            git \
-            go \
-            linux-headers \
-            ninja \
-            perl
           git clone https://boringssl.googlesource.com/boringssl
           cd boringssl
           git checkout $BORINGSSL_COMMIT
           cmake -DCMAKE_BUILD_TYPE=Release -GNinja .
           ninja
-      
-      - name: Cache LSQUIC
-        id: cache-lsquic
-        uses: actions/cache@v2
-        with:
-          path: ./lsquic
-          key: lsquic-${{ env.LSQUIC_COMMIT }}-${{ env.BORINGSSL_COMMIT }}
-      
+
       - name: Build LSQUIC
         if: steps.cache-lsquic.outputs.cache-hit != 'true'
         run: |
-          apk add \
-            build-base \
-            bsd-compat-headers \
-            cmake \
-            git \
-            go \
-            libevent-dev \
-            linux-headers \
-            perl \
-            zlib-dev \
-            zlib-static
           git clone https://github.com/litespeedtech/lsquic.git
           cd lsquic
           git checkout $LSQUIC_COMMIT
@@ -76,23 +64,22 @@ jobs:
           git submodule update
           cmake -DBORINGSSL_DIR=../boringssl .
           make
-      
+
       - name: Test LSQUIC
         if: steps.cache-lsquic.outputs.cache-hit != 'true'
         run: |
           cd lsquic
           make test
-      
+
       - name: Set LSQUIC_VERSION
         run: |
           cd lsquic
           LSQUIC_VERSION=$(git describe --contains $LSQUIC_COMMIT)
           echo "LSQUIC_VERSION=$LSQUIC_VERSION" >> $GITHUB_ENV
           echo "LSQUIC_VERSION=$LSQUIC_VERSION"
-      
+
       - name: Prepare artifact / release asset
         run: |
-          apk add binutils
           mkdir dist
           cd dist
           ar -x ../boringssl/ssl/libssl.a
@@ -102,29 +89,29 @@ jobs:
           rm *.o
           strip --strip-unneeded liblsquic.a
           ranlib liblsquic.a
-          
+
           echo "liblsquic.a $LSQUIC_VERSION (https://github.com/litespeedtech/lsquic/commit/$LSQUIC_COMMIT)" > version.txt
-      
+
       - uses: actions/upload-artifact@v2
         with:
           name: liblsquic.zip
           path: dist/
-      
+
   release:
     runs-on: ubuntu-latest
-    
+
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    
+
     needs: build
     env:
       LSQUIC_VERSION: ${{ needs.build.outputs.LSQUIC_VERSION }}
       LSQUIC_COMMIT: ${{ needs.build.outputs.LSQUIC_COMMIT }}
-    
+
     steps:
       - uses: actions/download-artifact@v2
         with:
           name: liblsquic.zip
-      
+
       - name: Create release
         id: create_release
         uses: actions/create-release@v1
@@ -134,7 +121,7 @@ jobs:
           tag_name: ${{ env.LSQUIC_VERSION }}
           release_name: ${{ env.LSQUIC_VERSION }}
           body: liblsquic.a ${{ env.LSQUIC_VERSION }} (https://github.com/litespeedtech/lsquic/commit/${{ env.LSQUIC_COMMIT }})
-      
+
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
         env:
